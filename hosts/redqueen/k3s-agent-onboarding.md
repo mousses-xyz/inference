@@ -181,6 +181,7 @@ this removes the agent's local state and the Node object; it does not touch `/sr
 ## notes
 
 - the agent cannot schedule anything without the taint toleration, so the join is inert until the LiteLLM placement change is separately approved.
+- **`git pull` on redqueen deploys.** `link-runtime.sh` installs `post-merge` and `post-rewrite` hooks into `core.hooksPath` (`/srv/ai/model-router/git-hooks`), and they exec `.githooks/redqueen-pull-upgrade`, which runs the drain-and-deploy flow. a docs-only pull still revalidates runtime manifests and reapplies user units. observed 2026-11-02 while fast-forwarding this file: the pull reported `deployed <rev>; APIs healthy`. use `git fetch` plus inspection when you do not intend to deploy.
 - `--node-label` and `--node-taint` are registration-time only. change them later with `kubectl`, not by editing the k3s unit.
 - the node name is pinned to `redqueen`; the host's own hostname (`amd-halo`) and DNS alias do not change.
 - LiteLLM's 1 CPU / 4 GiB request fits the remaining allocatable memory and CPU after the reservations above.
