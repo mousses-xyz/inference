@@ -123,10 +123,30 @@ if [[ "${glm53_command}" != *'--reasoning-effort low'* ]]; then
   exit 1
 fi
 
-for flag in '--moe-stream' '--moe-stream-direct' '--moe-stream-cache 4g' "--moe-stream-cache-max ${cache_max_gib}g" '--moe-stream-io-threads 1'; do
+for flag in '--moe-stream' '--moe-stream-direct' '--moe-stream-cache 4g' "--moe-stream-cache-max ${cache_max_gib}g"; do
   count="$(grep -Fxc -- "      ${flag}" "${router_config}")"
   if [[ "${count}" -ne 4 ]]; then
     printf 'expected all streamed MoE workers to use %s\n' "${flag}" >&2
+    exit 1
+  fi
+done
+deepseek_command="$(awk '
+  /^  deepseek-v4\.1-flash-1017-unsloth:$/ { in_model = 1; next }
+  /^  [^ ]/ { if (in_model) exit }
+  in_model { print }
+' "${router_config}")"
+if [[ "${deepseek_command}" != *'--moe-stream-io-threads 8'* ]]; then
+  printf 'DeepSeek must load routed experts with eight concurrent I/O threads\n' >&2
+  exit 1
+fi
+for model in gemma-4-26b-a4b-it qwen3.6-35b-a3b glm-5.3-flash-abliterated; do
+  model_command="$(awk -v model="${model}" '
+    $0 == "  " model ":" { in_model = 1; next }
+    /^  [^ ]/ { if (in_model) exit }
+    in_model { print }
+  ' "${router_config}")"
+  if [[ "${model_command}" != *'--moe-stream-io-threads 1'* ]]; then
+    printf 'streamed MoE worker %s must keep one expert I/O thread\n' "${model}" >&2
     exit 1
   fi
 done
