@@ -342,6 +342,16 @@ def profile_errors(path: Path) -> list[str]:
                 for field, amount in totals.items()
             ):
                 return [f"memory profile footprint does not match its components for {name}"]
+            text_peak = memory.get("text_transient_peak")
+            if text_peak is not None:
+                if not isinstance(text_peak, dict):
+                    return [f"memory profile has invalid text_transient_peak memory for {name}"]
+                for field in totals:
+                    amount = text_peak.get(field)
+                    if isinstance(amount, bool) or not isinstance(amount, int) or amount < 0:
+                        return [f"memory profile has invalid text_transient_peak memory for {name}"]
+                    if amount > memory["transient_peak"][field]:
+                        return [f"memory profile text_transient_peak exceeds its transient peak for {name}"]
             fingerprint = profile.get("artifact_fingerprint")
             identities = profile.get("artifact_identity")
             shapes = profile.get("supported_request_shapes")

@@ -91,6 +91,16 @@ def verify_profiles(document: dict, *, verify_sources: bool = True) -> None:
             for field, amount in totals.items()
         ):
             raise ValueError(f"{name} memory contract does not match its admission footprint")
+        text_peak = memory.get("text_transient_peak")
+        if text_peak is not None:
+            if not isinstance(text_peak, dict):
+                raise ValueError(f"{name} has an invalid text_transient_peak memory profile")
+            for field in totals:
+                amount = text_peak.get(field)
+                if isinstance(amount, bool) or not isinstance(amount, int) or amount < 0:
+                    raise ValueError(f"{name} has an invalid text_transient_peak memory value")
+                if amount > memory["transient_peak"][field]:
+                    raise ValueError(f"{name} text_transient_peak exceeds its transient peak")
         identities = profile.get("artifact_identity")
         fingerprint = profile.get("artifact_fingerprint")
         if (
@@ -588,6 +598,13 @@ def build_profiles(router_path: Path, policy_path: Path) -> dict:
             reclaimable=reclaimable,
             transient_peak=(vision_workspace_bytes, lazy_cache_bytes + vision_workspace_bytes),
         )
+        if multimodal_profile is not None:
+            # Text-only requests never need the image workspace. Keep a separate
+            # peak so the scheduler can leave that reservation out of admission.
+            memory["text_transient_peak"] = {
+                "gpu_bytes": 0,
+                "host_bytes": lazy_cache_bytes,
+            }
         return {
             **metadata, "weights_bytes": weight_bytes + extra_bytes + host_weight_bytes,
             "model_paths": [str(path) for path in weights],

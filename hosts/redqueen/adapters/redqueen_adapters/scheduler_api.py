@@ -1288,6 +1288,7 @@ class Scheduler:
         self.last_used: dict[str, float] = {}
         self.active: dict[str, int] = {}
         self.pending_requests: dict[str, int] = {}
+        self.multimodal_requests: dict[str, int] = {}
         self.cache_allocations: dict[str, int] = {
             name: spec["adaptive_cache"]["minimum_capacity_bytes"]
             for name, spec in resources.items()
@@ -1379,6 +1380,17 @@ class Scheduler:
             committed += self.minimum_reservation(name, active=True)
         return committed
 
+    def transient_peak(self, name: str, profile: dict) -> dict:
+        """Choose the text-only peak unless this worker holds multimodal work."""
+        peak = profile["transient_peak"]
+        if (
+            not self.multimodal_requests.get(name, 0)
+            and is_openai_worker(self.resources[name])
+            and isinstance(profile.get("text_transient_peak"), dict)
+        ):
+            peak = profile["text_transient_peak"]
+        return peak
+
     def reservation(self, name: str, *, include_transient: bool | None = None) -> Memory:
         """Current reservation; adapter-only workers keep their legacy full peak."""
         spec = self.resources[name]
@@ -1402,7 +1414,7 @@ class Scheduler:
             reclaimable = profile["reclaimable"]
             result += Memory(reclaimable["gpu_bytes"], reclaimable["host_bytes"])
         if active:
-            peak = profile["transient_peak"]
+            peak = self.transient_peak(name, profile)
             result += Memory(peak["gpu_bytes"], peak["host_bytes"])
         return result
 
@@ -1418,7 +1430,7 @@ class Scheduler:
             reclaimable = profile["reclaimable"]
             result += Memory(reclaimable["gpu_bytes"], reclaimable["host_bytes"])
         if active:
-            peak = profile["transient_peak"]
+            peak = self.transient_peak(name, profile)
             result += Memory(peak["gpu_bytes"], peak["host_bytes"])
         return result
 
@@ -1612,7 +1624,7 @@ class Scheduler:
                     or name == incoming
                     or not is_openai_worker(spec)
                 ):
-                    peak = profile["transient_peak"]
+                    peak = self.transient_peak(name, profile)
                     fixed += Memory(peak["gpu_bytes"], peak["host_bytes"])
             # Pending workers have not loaded yet, but their mandatory weights,
             # minimum expert cache, and transient request peak must remain in the
@@ -2970,7 +2982,13 @@ class Scheduler:
         task.add_done_callback(self.cache_rebalance_tasks.discard)
 
     @asynccontextmanager
-    async def request(self, name: str, request_id: str | None = None):
+    async def request(
+        self,
+        name: str,
+        request_id: str | None = None,
+        *,
+        multimodal: bool = False,
+    ):
         spec = self.resources.get(name)
         if spec is None or not is_openai_worker(spec):
             raise AdmissionError(404, "model is not configured", "model_not_found")
@@ -2984,7 +3002,11 @@ class Scheduler:
             else self.execution.hold_worker(name)
         )
         rebalance_after = False
+        multimodal_registered = False
         try:
+            if multimodal:
+                self.multimodal_requests[name] = self.multimodal_requests.get(name, 0) + 1
+                multimodal_registered = True
             LOG.info(
                 "request_waiting_for_execution id=%s model=%s exclusive=%s pending_requests=%d",
                 request_id,
@@ -3110,6 +3132,12 @@ class Scheduler:
                     )
                     rebalance_after = True
         finally:
+            if multimodal_registered:
+                count = self.multimodal_requests.get(name, 0) - 1
+                if count > 0:
+                    self.multimodal_requests[name] = count
+                else:
+                    self.multimodal_requests.pop(name, None)
             if pending_registered:
                 pending_count = self.pending_requests.get(name, 0)
                 if pending_count <= 1:
@@ -3891,7 +3919,11 @@ def create_apps(policy: dict, resources: dict, api_key: str, *, runtime_factory=
                     await asyncio.gather(pending, return_exceptions=True)
         if model is None:
             return await forward()
-        async with state["scheduler"].request(model, request.get("request_id")):
+        async with state["scheduler"].request(
+            model,
+            request.get("request_id"),
+            multimodal=request_shape_name in MULTIMODAL_REQUEST_SHAPES,
+        ):
             return await forward()
 
     public.router.add_get("/healthz", health)
