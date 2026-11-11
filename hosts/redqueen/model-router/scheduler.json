@@ -16,7 +16,7 @@
   "lazy_tensor_profiles": {
     "deepseek-v4.1-flash-1017-unsloth": {
       "expected_tensors": ["per_layer_token_embd.weight"],
-      "working_set_estimate_mib": 5120
+      "working_set_estimate_mib": 512
     }
   },
   "multimodal_profiles": {
