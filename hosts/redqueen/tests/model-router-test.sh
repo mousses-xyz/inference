@@ -130,25 +130,24 @@ for flag in '--moe-stream' '--moe-stream-direct' '--moe-stream-cache 4g' "--moe-
     exit 1
   fi
 done
-deepseek_command="$(awk '
-  /^  deepseek-v4\.1-flash-1017-unsloth:$/ { in_model = 1; next }
-  /^  [^ ]/ { if (in_model) exit }
-  in_model { print }
-' "${router_config}")"
-if [[ "${deepseek_command}" != *'--moe-stream-io-threads 8'* ]]; then
-  printf 'DeepSeek must load routed experts with eight concurrent I/O threads\n' >&2
-  exit 1
-fi
-for model in gemma-4-26b-a4b-it qwen3.6-35b-a3b glm-5.3-flash-abliterated; do
-  model_command="$(awk -v model="${model}" '
+model_io_threads() {
+  local model="$1" expected="$2" command count
+  command="$(awk -v model="${model}" '
     $0 == "  " model ":" { in_model = 1; next }
     /^  [^ ]/ { if (in_model) exit }
     in_model { print }
   ' "${router_config}")"
-  if [[ "${model_command}" != *'--moe-stream-io-threads 1'* ]]; then
-    printf 'streamed MoE worker %s must keep one expert I/O thread\n' "${model}" >&2
+  count="$(grep -Ec '^      --moe-stream-io-threads [0-9]+$' <<< "${command}" || true)"
+  if [[ "${count}" -ne 1 ]] || \
+    ! grep -Fqx -- "      --moe-stream-io-threads ${expected}" <<< "${command}"; then
+    printf 'streamed MoE worker %s must set --moe-stream-io-threads %s exactly once\n' \
+      "${model}" "${expected}" >&2
     exit 1
   fi
+}
+model_io_threads deepseek-v4.1-flash-1017-unsloth 8
+for model in gemma-4-26b-a4b-it qwen3.6-35b-a3b glm-5.3-flash-abliterated; do
+  model_io_threads "${model}" 1
 done
 for model in gemma-4-26b-a4b-it qwen3.6-35b-a3b deepseek-v4.1-flash-1017-unsloth glm-5.3-flash-abliterated; do
   concurrency_limit="$(awk -v model="${model}" '
