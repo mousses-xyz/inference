@@ -1087,6 +1087,35 @@ class SchedulerTest(unittest.IsolatedAsyncioTestCase):
         scheduler.multimodal_requests["a"] = 1
         self.assertEqual(scheduler.reservation("a", include_transient=True), Memory(50, 70))
 
+    async def test_multimodal_request_context_holds_and_releases_the_full_peak(self):
+        profile = {
+            "mandatory": {"gpu_bytes": 10, "host_bytes": 10},
+            "reclaimable": {"gpu_bytes": 0, "host_bytes": 0},
+            "transient_peak": {"gpu_bytes": 40, "host_bytes": 60},
+            "text_transient_peak": {"gpu_bytes": 0, "host_bytes": 20},
+        }
+        resources = {
+            "a": {
+                "kind": "text",
+                "gpu_bytes": 50,
+                "host_bytes": 70,
+                "memory": profile,
+                "concurrency": 1,
+                "context_tokens": 32768,
+            }
+        }
+        runtime = FakeRuntime(resources)
+        scheduler = Scheduler(
+            resources, runtime, Path(self.directory.name) / "multimodal-leases", self.policy
+        )
+
+        async with scheduler.request("a", multimodal=True):
+            self.assertEqual(scheduler.multimodal_requests, {"a": 1})
+            self.assertEqual(scheduler.minimum_reservation("a", active=True), Memory(50, 70))
+
+        self.assertEqual(scheduler.multimodal_requests, {})
+        self.assertEqual(scheduler.minimum_reservation("a", active=True), Memory(10, 30))
+
     async def test_active_model_cannot_be_evicted_and_idle_models_are_not_pointlessly_stopped(self):
         self.runtime.loaded = {"a": "ready", "b": "ready"}
         self.protect("b")

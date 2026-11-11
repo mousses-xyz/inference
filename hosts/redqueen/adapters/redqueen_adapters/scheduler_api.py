@@ -2994,8 +2994,6 @@ class Scheduler:
             raise AdmissionError(404, "model is not configured", "model_not_found")
         request_id = request_id or uuid.uuid4().hex
         request_started = time.monotonic()
-        if multimodal:
-            self.multimodal_requests[name] = self.multimodal_requests.get(name, 0) + 1
         self.pending_requests[name] = self.pending_requests.get(name, 0) + 1
         pending_registered = True
         execution_admission = (
@@ -3004,7 +3002,11 @@ class Scheduler:
             else self.execution.hold_worker(name)
         )
         rebalance_after = False
+        multimodal_registered = False
         try:
+            if multimodal:
+                self.multimodal_requests[name] = self.multimodal_requests.get(name, 0) + 1
+                multimodal_registered = True
             LOG.info(
                 "request_waiting_for_execution id=%s model=%s exclusive=%s pending_requests=%d",
                 request_id,
@@ -3130,7 +3132,7 @@ class Scheduler:
                     )
                     rebalance_after = True
         finally:
-            if multimodal:
+            if multimodal_registered:
                 count = self.multimodal_requests.get(name, 0) - 1
                 if count > 0:
                     self.multimodal_requests[name] = count
