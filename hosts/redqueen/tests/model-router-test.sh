@@ -123,12 +123,31 @@ if [[ "${glm53_command}" != *'--reasoning-effort low'* ]]; then
   exit 1
 fi
 
-for flag in '--moe-stream' '--moe-stream-direct' '--moe-stream-cache 4g' "--moe-stream-cache-max ${cache_max_gib}g" '--moe-stream-io-threads 1'; do
+for flag in '--moe-stream' '--moe-stream-direct' '--moe-stream-cache 4g' "--moe-stream-cache-max ${cache_max_gib}g"; do
   count="$(grep -Fxc -- "      ${flag}" "${router_config}")"
   if [[ "${count}" -ne 4 ]]; then
     printf 'expected all streamed MoE workers to use %s\n' "${flag}" >&2
     exit 1
   fi
+done
+model_io_threads() {
+  local model="$1" expected="$2" command count
+  command="$(awk -v model="${model}" '
+    $0 == "  " model ":" { in_model = 1; next }
+    /^  [^ ]/ { if (in_model) exit }
+    in_model { print }
+  ' "${router_config}")"
+  count="$(grep -Ec '^      --moe-stream-io-threads [0-9]+$' <<< "${command}" || true)"
+  if [[ "${count}" -ne 1 ]] || \
+    ! grep -Fqx -- "      --moe-stream-io-threads ${expected}" <<< "${command}"; then
+    printf 'streamed MoE worker %s must set --moe-stream-io-threads %s exactly once\n' \
+      "${model}" "${expected}" >&2
+    exit 1
+  fi
+}
+model_io_threads deepseek-v4.1-flash-1017-unsloth 8
+for model in gemma-4-26b-a4b-it qwen3.6-35b-a3b glm-5.3-flash-abliterated; do
+  model_io_threads "${model}" 1
 done
 for model in gemma-4-26b-a4b-it qwen3.6-35b-a3b deepseek-v4.1-flash-1017-unsloth glm-5.3-flash-abliterated; do
   concurrency_limit="$(awk -v model="${model}" '
