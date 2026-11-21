@@ -13,6 +13,7 @@ readonly -a text_models=(
   gemma-4-12b-it
   gemma-4-26b-a4b-it
   qwen3.6-35b-a3b
+  inkling-2-mini
   deepseek-v4.1-flash-1017-unsloth
   glm-5.3-flash-abliterated
 )
@@ -111,6 +112,11 @@ glm53_command="$(awk '
   /^  [^ ]/ { if (in_model) exit }
   in_model { print }
 ' "${router_config}")"
+inkling_command="$(awk '
+  /^  inkling-2-mini:$/ { in_model = 1; next }
+  /^  [^ ]/ { if (in_model) exit }
+  in_model { print }
+' "${router_config}")"
 cache_max_gib="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["gpu_budget_mib"] // 1024)' "${scheduler_policy}")"
 if [[ "${qwen36_command}" != *'--ubatch-size 1'* ]] || \
   [[ "${qwen36_command}" != *'--moe-stream'* ]] || \
@@ -120,6 +126,14 @@ if [[ "${qwen36_command}" != *'--ubatch-size 1'* ]] || \
 fi
 if [[ "${glm53_command}" != *'--reasoning-effort low'* ]]; then
   printf 'GLM must use low reasoning effort so bounded completion budgets yield visible answers\n' >&2
+  exit 1
+fi
+if [[ "${inkling_command}" != *'/srv/ai/runtimes/llama.cpp-690b87d-inkling2-v1/bin/llama-server'* ]] || \
+  [[ "${inkling_command}" != *'--model /srv/ai/models/inkling-2-mini/Inkling-2-Mini-UD-Q4_K_XL.gguf'* ]] || \
+  [[ "${inkling_command}" != *'--mmproj /srv/ai/models/inkling-2-mini/mmproj-F16.gguf'* ]] || \
+  [[ "${inkling_command}" != *'--top-k 0'* ]] || \
+  [[ "${inkling_command}" != *'--min-p 0.0'* ]]; then
+  printf 'Inkling-2-Mini must use the pinned mainline looped runtime and model-recommended sampling\n' >&2
   exit 1
 fi
 
@@ -166,6 +180,14 @@ grep -Fq '/srv/ai/runtimes/llama.cpp-d812350-deepseek41-moe-v17/bin/llama-server
 grep -Fq '/srv/ai/runtimes/llama.cpp-d812350-moe-v13/bin/llama-server' "${router_config}"
 grep -Fq 'readonly runtime=llama.cpp-d812350-moe-v13' "${host_root}/model-router/install-moe-runtime.sh"
 grep -Fq 'readonly runtime=llama.cpp-d812350-deepseek41-moe-v17' "${host_root}/model-router/install-deepseek41-runtime.sh"
+grep -Fq '/srv/ai/runtimes/llama.cpp-690b87d-inkling2-v1/bin/llama-server' "${router_config}"
+grep -Fq 'readonly runtime=llama.cpp-690b87d-inkling2-v1' \
+  "${host_root}/model-router/install-inkling2-runtime.sh"
+grep -Fq 'revision=690b87d88151dbd775bb6eff5581663688785928' \
+  "${host_root}/model-router/runtime-manifests/llama.cpp-690b87d-inkling2-v1/SOURCE_REVISION"
+grep -Fq '"${source_root}/install-inkling2-runtime.sh"' "${host_root}/model-router/install.sh"
+grep -Fq 'Mainline_Support/Inkling-2-Mini-UD-Q4_K_XL.gguf_file' \
+  "${host_root}/models/download-evaluation-models.sh"
 (cd "${host_root}/model-router/runtime-manifests/llama.cpp-d812350-moe-v13" && sha256sum --check --quiet PATCH_SHA256)
 (cd "${host_root}/model-router/runtime-manifests/llama.cpp-d812350-deepseek41-moe-v17" && sha256sum --check --quiet PATCH_SHA256)
 grep -Fq 'readonly capacity_patch_file="${runtime_metadata}/capacity-sizing.patch"' \
@@ -262,6 +284,7 @@ assert policy["services"]["deepseek"]["expert_cache_mib"] == 1024
 assert policy["services"]["deepseek"]["expert_cache_max_mib"] == policy["gpu_budget_mib"]
 assert policy["services"]["deepseek"]["expert_cache_url"] == "http://127.0.0.1:8085/expert-cache"
 assert policy["services"]["deepseek"].get("exclusive_execution") is not True
+assert policy["multimodal_profiles"]["inkling-2-mini"] == {"workspace_mib": 4096, "max_images": 1}
 PY
 if grep -Fq 'deepseek-v4.1-flash-q2' "${router_config}"; then
   printf 'DeepSeek is not eligible for registration until its weights verify\n' >&2
@@ -278,6 +301,7 @@ for file in \
   "${host_root}/model-router/create-venv.sh" \
   "${host_root}/model-router/install-glm53-runtime.sh" \
   "${host_root}/model-router/install-moe-runtime.sh" \
+  "${host_root}/model-router/install-inkling2-runtime.sh" \
   "${host_root}/model-router/glm-5.3-flash-abliterated-launcher.sh" \
   "${host_root}/model-router/install.sh" \
   "${host_root}/model-router/deploy-scheduler.sh" \
