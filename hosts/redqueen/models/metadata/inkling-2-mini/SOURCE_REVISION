@@ -1,0 +1,7 @@
+gguf_repository=unsloth/Inkling-2-Mini-GGUF
+gguf_revision=ae9327c5fbc7333116ba32eee78bb5d2bbefae4f
+source_model_repository=thinkingmachines/Inkling-2-Mini
+source_model_revision=ed40e7da625f594fc9c4990f5f66be24873c22d7
+quantization=UD-Q4_K_XL; mainline inkling2_loop layout; F16 vision projector
+runtime=llama.cpp@690b87d88151dbd775bb6eff5581663688785928 (llama.cpp #32704)
+license=Apache-2.0

@@ -21,6 +21,7 @@ bash "${host_root}/model-router/create-venv.sh"
 "${source_root}/install-embeddinggemma2-runtime.sh"
 "${source_root}/install-moe-runtime.sh"
 "${source_root}/install-deepseek41-runtime.sh"
+"${source_root}/install-inkling2-runtime.sh"
 for command in curl sha256sum tar cmp install systemctl python3; do
   if ! command -v "${command}" >/dev/null; then
     printf 'required command not found: %s\n' "${command}" >&2
@@ -39,6 +40,7 @@ for model_id in \
   gemma-4-12b-it \
   gemma-4-26b-a4b-it \
   qwen3.6-35b-a3b \
+  inkling-2-mini \
   deepseek-v4.1-flash-1017-unsloth \
   huihui-glm-5.3-flash-abliterated-gguf \
   embeddinggemma-2 \

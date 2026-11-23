@@ -24,6 +24,10 @@
       "workspace_mib": 4096,
       "max_images": 1
     },
+    "inkling-2-mini": {
+      "workspace_mib": 4096,
+      "max_images": 1
+    },
     "glm-5.3-flash-abliterated": {
       "workspace_mib": 4096,
       "max_images": 1

@@ -4,10 +4,11 @@ umask 0027
 
 readonly model_root="${MODEL_ROOT:-/srv/ai/models}"
 readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-readonly required_bytes=573929568511
+readonly required_bytes=592198674407
 readonly reserve_bytes=100000000000
 readonly deepseek_1017_bytes=510311045295
 readonly unsloth_deepseek_q2_bytes=335765753183
+readonly inkling_2_mini_bytes=18269105896
 # the xet resolver rejects open-ended ranges for very large artifacts.
 readonly ranged_download_threshold_bytes=2147483648
 readonly ranged_download_chunk_bytes=1073741824
@@ -33,6 +34,8 @@ plan() {
     'Q4_K_M GGUF + INT8 ConvRot encoder + BF16 VAE'
   printf '%-32s %12s  %s\n' qwen3.6-35b-a3b 21033759872 \
     'Q4_K_M GGUF + Q8_0 vision projector'
+  printf '%-32s %12s  %s\n' inkling-2-mini "${inkling_2_mini_bytes}" \
+    'UD-Q4_K_XL mainline-layout GGUF + F16 vision projector'
   printf 'total model/encoder/projector bytes: %s\n' "${required_bytes}"
   printf 'additional targeted Unsloth DeepSeek bytes: %s\n' "${unsloth_deepseek_q2_bytes}"
   printf 'remaining targeted Unsloth DeepSeek bytes: %s\n' "${unsloth_remaining_bytes}"
@@ -183,6 +186,7 @@ verify_all() {
     gemma-4-26b-a4b-it \
     qwen-image-2.1-uncensored \
     qwen3.6-35b-a3b \
+    inkling-2-mini \
     deepseek-v4.1-flash-1017; do
     root="${model_root}/${model_id}"
     [[ -s "${root}/SHA256SUMS" ]] || {
@@ -218,8 +222,11 @@ case "${1:---plan}" in
   --download-unsloth-deepseek-q2)
     download_scope=unsloth-only
     ;;
+  --download-inkling-2-mini)
+    download_scope=inkling-only
+    ;;
   *)
-    printf 'usage: %s [--plan|--download|--download-deepseek-1017|--download-unsloth-deepseek-q2|--verify-only|--verify-unsloth-deepseek-q2]\n' "$0" >&2
+    printf 'usage: %s [--plan|--download|--download-deepseek-1017|--download-unsloth-deepseek-q2|--download-inkling-2-mini|--verify-only|--verify-unsloth-deepseek-q2]\n' "$0" >&2
     exit 2
     ;;
 esac
@@ -246,6 +253,8 @@ if [[ "${download_scope}" == "deepseek-only" ]]; then
 elif [[ "${download_scope}" == "unsloth-only" ]]; then
   unsloth_deepseek_q2_remaining_bytes || exit 1
   required_download_bytes="${unsloth_q2_remaining_bytes}"
+elif [[ "${download_scope}" == "inkling-only" ]]; then
+  required_download_bytes="${inkling_2_mini_bytes}"
 fi
 if (( available_bytes < required_download_bytes + reserve_bytes )); then
   printf 'need at least %s bytes plus %s bytes of free-space reserve; found %s\n' \
@@ -588,6 +597,42 @@ download_unsloth_deepseek_q2() {
   }
 }
 
+download_inkling_2_mini() {
+  local model_id=inkling-2-mini
+  local gguf_repository=unsloth/Inkling-2-Mini-GGUF
+  local gguf_revision=ae9327c5fbc7333116ba32eee78bb5d2bbefae4f
+
+  prepare_manifest "${model_id}"
+  # The root GGUFs use Unsloth's looped layout and need Unsloth's llama.cpp
+  # fork. This is the same artifact in the mainline inkling2_loop layout; the
+  # pinned runtime carries llama.cpp #32704, which is required for correct
+  # NVFP4 expert scales on the looped layers.
+  download_artifact "${model_id}" "${gguf_repository}" "${gguf_revision}" \
+    'Mainline_Support/Inkling-2-Mini-UD-Q4_K_XL.gguf_file' \
+    'Inkling-2-Mini-UD-Q4_K_XL.gguf' \
+    17629760736 e64276656f072e9b2197a61723667cbdb71da66a716ffd966e572c21088f3cd3
+  download_artifact "${model_id}" "${gguf_repository}" "${gguf_revision}" \
+    'mmproj-F16.gguf' 'mmproj-F16.gguf' \
+    639348160 3bff75ffeb2d6e0371ba7bd42e30d26a7d98aea681fa44b03b5a20891cfa2c5f
+  install_apache_license "${model_id}"
+  fetch_model_docs "${model_id}" "${gguf_repository}" "${gguf_revision}"
+  write_source_revision "${model_id}" \
+    "gguf_repository=${gguf_repository}" \
+    "gguf_revision=${gguf_revision}" \
+    'source_model_repository=thinkingmachines/Inkling-2-Mini' \
+    'source_model_revision=ed40e7da625f594fc9c4990f5f66be24873c22d7' \
+    'quantization=UD-Q4_K_XL; mainline inkling2_loop layout; F16 vision projector' \
+    'runtime=llama.cpp@690b87d88151dbd775bb6eff5581663688785928 (llama.cpp #32704)' \
+    'license=Apache-2.0'
+  finish_model "${model_id}"
+  cmp -s -- "${script_dir}/metadata/${model_id}/SHA256SUMS" \
+    "${model_root}/${model_id}/SHA256SUMS" || {
+    printf 'downloaded checksum manifest differs from pinned metadata: %s\n' \
+      "${model_root}/${model_id}/SHA256SUMS" >&2
+    return 1
+  }
+}
+
 prepare_manifest() {
   local model_id="$1"
   local root="${model_root}/${model_id}"
@@ -648,6 +693,12 @@ fi
 if [[ "${download_scope}" == "unsloth-only" ]]; then
   download_unsloth_deepseek_q2
   printf 'DeepSeek-V4.1-Flash-1017 Unsloth UD-Q2_K_XL downloaded and SHA-256 verified\n'
+  exit 0
+fi
+
+if [[ "${download_scope}" == "inkling-only" ]]; then
+  download_inkling_2_mini
+  printf 'Inkling-2-Mini UD-Q4_K_XL downloaded and SHA-256 verified\n'
   exit 0
 fi
 
@@ -741,6 +792,8 @@ write_source_revision qwen3.6-35b-a3b \
   'quantization=Q4_K_M; all experts retained in the GGUF' \
   'license=Apache-2.0'
 finish_model qwen3.6-35b-a3b
+
+download_inkling_2_mini
 
 download_deepseek_1017
 

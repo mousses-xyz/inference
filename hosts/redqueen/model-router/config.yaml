@@ -151,6 +151,37 @@ models:
     ttl: 0
     concurrencyLimit: 2
 
+  inkling-2-mini:
+    cmd: >-
+      /srv/ai/runtimes/llama.cpp-690b87d-inkling2-v1/bin/llama-server
+      --model /srv/ai/models/inkling-2-mini/Inkling-2-Mini-UD-Q4_K_XL.gguf
+      --mmproj /srv/ai/models/inkling-2-mini/mmproj-F16.gguf
+      --alias inkling-2-mini
+      --ctx-size 220000
+      --cache-type-k q8_0
+      --cache-type-v q8_0
+      --gpu-layers 999
+      --parallel 1
+      --cont-batching
+      --flash-attn auto
+      --image-max-tokens 1024
+      --jinja
+      --temp 1.0
+      --top-p 1.0
+      --top-k 0
+      --min-p 0.0
+      --metrics
+      --slots
+      --no-ui
+      --threads 28
+      --threads-http 8
+      --api-key-file /srv/ai/secrets/qwen38-api-keys
+      --timeout -1
+      --host 127.0.0.1
+      --port ${PORT}
+    ttl: 0
+    concurrencyLimit: 1
+
   deepseek-v4.1-flash-1017-unsloth:
     cmd: >-
       /srv/ai/runtimes/llama.cpp-d812350-deepseek41-moe-v17/bin/llama-server
@@ -364,6 +395,7 @@ routing:
             - gemma-4-12b-it
             - gemma-4-26b-a4b-it
             - qwen3.6-35b-a3b
+            - inkling-2-mini
             - deepseek-v4.1-flash-1017-unsloth
             - glm-5.3-flash-abliterated
             - embeddinggemma-2

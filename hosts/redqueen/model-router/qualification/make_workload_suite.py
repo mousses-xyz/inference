@@ -21,6 +21,7 @@ MODEL_ALIASES = (
     "gemma-4-12b-it",
     "gemma-4-26b-a4b-it",
     "qwen3.6-35b-a3b",
+    "inkling-2-mini",
     "deepseek-v4.1-flash-1017-unsloth",
     "glm-5.3-flash-abliterated",
     "embeddinggemma-2",
@@ -33,6 +34,8 @@ OPENAI_SERVICE_MODELS = ("deepseek",)
 TEXT_MODELS = tuple(model for model in MODEL_ALIASES if model != "embeddinggemma-2") + OPENAI_SERVICE_MODELS
 MULTIMODAL_MODELS = (
     "qwen3.6-35b-a3b",
+    "gemma-4-26b-a4b-it",
+    "inkling-2-mini",
     "deepseek-v4.1-flash-1017-unsloth",
     "glm-5.3-flash-abliterated",
     "deepseek",
